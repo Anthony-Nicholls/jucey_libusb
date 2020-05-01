@@ -5,15 +5,15 @@
 
  BEGIN_JUCE_MODULE_DECLARATION
 
- ID:                 jucey_libusb
- vendor:             jucey
- version:            0.0.0
- name:               JUCEY libusb classes
- description:        A collection of friendly classes that wrap up the libusb library
+ ID:                jucey_libusb
+ vendor:            jucey
+ version:           0.0.0
+ name:              JUCEY libusb classes
+ description:       A collection of friendly classes that wrap up the libusb library
 
- dependencies:
- searchpaths:        libusb/libusb config
- OSXFrameworks:      IOKit CoreFoundation
+ dependencies:      juce_core
+ searchpaths:       libusb/libusb config
+ OSXFrameworks:     IOKit CoreFoundation
 
  END_JUCE_MODULE_DECLARATION
 
