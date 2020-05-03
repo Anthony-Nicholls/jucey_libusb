@@ -4,16 +4,16 @@
 class USBDevice
 {
 public:
-    /** Default constructor */
+    /** Default constructor. */
     USBDevice() = default;
 
-    /** Destructor */
+    /** Destructor. */
     ~USBDevice() = default;
 
-    /** Copy constructor */
+    /** Copy constructor. */
     USBDevice (const USBDevice&) = default;
 
-    /** Assignment operator */
+    /** Assignment operator. */
     USBDevice& operator= (const USBDevice&) = default;
 
     /** Returns the Vendor ID. */
@@ -73,6 +73,46 @@ public:
     /** Returns the port number the device is connected to on the bus. */
     int getPortNumber() const noexcept;
 
+    class Configuration
+    {
+    public:
+        /** Default constructor. */
+        Configuration() = default;
+
+        /** Destructor. */
+        ~Configuration() = default;
+
+        /** Returns the maximum power consumption in milliamps based on this
+            configuration.
+         */
+        int getMilliampsRequired() const noexcept;
+
+    private:
+        friend class USBDevice;
+
+        class Pimpl;
+        std::shared_ptr<Pimpl> pimpl;
+
+        /** Internal constructor. */
+        Configuration (const std::shared_ptr<Pimpl>& pimpl) noexcept;
+    };
+
+    /** Returns the configuration currently in use. */
+    Configuration getActiveConfiguration() const noexcept;
+
+    /** Returns all possible configurations. */
+    juce::Array<Configuration> getConfigurations() const noexcept;
+
+    /** Returns the maximum power consumption in milliamps based on the active
+        configuration.
+     */
+    int getCurrentMilliampsRequired() const noexcept;
+
+    /** Returns the maximum power consumption in milliamps based on all the
+        avaliable configurations.
+     */
+    int getMaximumMilliampsRequired() const noexcept;
+
     /** Comparison operators */
     bool operator== (const USBDevice& other) const noexcept;
     bool operator!= (const USBDevice& other) const noexcept;
@@ -85,6 +125,8 @@ private:
 
     /** Internal constructor. */
     USBDevice (const std::shared_ptr<Pimpl>& pimpl) noexcept;
+
+    juce::Array<Configuration> configurations;
     
     JUCE_LEAK_DETECTOR (USBDevice)
 };

@@ -15,7 +15,7 @@ void throwOnLibUsbError (int result)
 
 libusb_device_descriptor getDeviceDescriptor (libusb_device* device) noexcept
 {
-    libusb_device_descriptor descriptor;
+    libusb_device_descriptor descriptor {};
     libusb_get_device_descriptor (device, &descriptor);
 
     return descriptor;

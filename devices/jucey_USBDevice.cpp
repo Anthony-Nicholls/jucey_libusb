@@ -11,6 +11,66 @@ juce::String getDescriptorString (libusb_device_handle* handle,
     return juce::String (juce::CharPointer_UTF8 (reinterpret_cast<char*>(buffer)));
 }
 
+int getPowerUnitsFromSpeed (libusb_speed speed)
+{
+    switch (speed)
+    {
+        case LIBUSB_SPEED_UNKNOWN:
+            return 0;
+
+        case LIBUSB_SPEED_LOW:
+        case LIBUSB_SPEED_FULL:
+            return 1;
+
+        case LIBUSB_SPEED_HIGH:
+            return 2;
+
+        case LIBUSB_SPEED_SUPER:
+        case LIBUSB_SPEED_SUPER_PLUS:
+            return 8;
+
+        default:
+            jassertfalse;
+            return 0;
+    }
+}
+
+//==============================================================================
+struct LibUsbConfig
+{
+    LibUsbConfig (libusb_device* device, int index) noexcept
+    {
+        libusb_get_config_descriptor (device, index, &descriptor);
+    }
+
+    LibUsbConfig (libusb_device* device) noexcept
+    {
+        libusb_get_active_config_descriptor (device, &descriptor);
+    }
+
+    ~LibUsbConfig() noexcept
+    {
+        if (descriptor != nullptr)
+            libusb_free_config_descriptor (descriptor);
+    }
+
+    bool operator== (const LibUsbConfig& other) const noexcept
+    {
+        return descriptor != nullptr
+            && other.descriptor != nullptr
+            && descriptor->bConfigurationValue == other.descriptor->bConfigurationValue;
+    }
+
+    bool operator!= (const LibUsbConfig& other) const noexcept
+    {
+        return descriptor == nullptr
+            || other.descriptor == nullptr
+            || descriptor->bConfigurationValue != other.descriptor->bConfigurationValue;
+    }
+
+    libusb_config_descriptor* descriptor {nullptr};
+};
+
 //==============================================================================
 struct LibUsbDevice
 {
@@ -30,7 +90,7 @@ struct LibUsbDevice
 };
 
 //==============================================================================
-class USBDevice::Pimpl : private LibUsbDevice
+class USBDevice::Pimpl : public LibUsbDevice
 {
 public:
     Pimpl() = default;
@@ -39,14 +99,7 @@ public:
     Pimpl (libusb_device* device) noexcept
         : LibUsbDevice (device)
         , descriptor (getDeviceDescriptor (device))
-        , vendorId (descriptor.idVendor)
-        , productId (descriptor.idProduct)
-        , busNumber (libusb_get_bus_number (device))
-        , portNumber (libusb_get_port_number (device))
-        , address (libusb_get_device_address (device))
         , speed ((libusb_speed) libusb_get_device_speed (device))
-        , usbSpecification (descriptor.bcdUSB)
-        , version (descriptor.bcdDevice)
         , manufacturerName (getDescriptorString (handle, descriptor.iManufacturer))
         , productName (getDescriptorString (handle, descriptor.iProduct))
         , serialNumber (getDescriptorString (handle, descriptor.iSerialNumber))
@@ -56,14 +109,7 @@ public:
 
     const libusb_device_descriptor descriptor {};
 
-    const int vendorId {0};
-    const int productId {0};
-    const int busNumber {0};
-    const int portNumber {0};
-    const int address {0};
     const libusb_speed speed {LIBUSB_SPEED_UNKNOWN};
-    const int usbSpecification {0};
-    const int version {0};
 
     const juce::String manufacturerName {};
     const juce::String productName {};
@@ -73,11 +119,36 @@ public:
 };
 
 //==============================================================================
+class USBDevice::Configuration::Pimpl : public LibUsbConfig
+{
+public:
+    Pimpl() = default;
+    ~Pimpl() = default;
+
+    Pimpl (const USBDevice& device, int index) noexcept
+        : LibUsbConfig (device.pimpl->device, index)
+        , numberOfInterfaces (descriptor->bNumInterfaces)
+        , milliampsRequired (getPowerUnitsFromSpeed (device.pimpl->speed) * descriptor->MaxPower)
+        , description (getDescriptorString (device.pimpl->handle, descriptor->iConfiguration))
+
+    {
+
+    }
+
+    const int numberOfInterfaces = 0;
+    const int milliampsRequired = 0;
+    const juce::String description;
+};
+
+//==============================================================================
 USBDevice::USBDevice (const std::shared_ptr<Pimpl>& pimpl) noexcept
     : pimpl (pimpl)
-//    , configurations (USBDeviceConfiguration::createConfigurationsFromDevice (*this))
 {
+    jassert (pimpl != nullptr);
+    jassert (pimpl->device != nullptr);
 
+    for (auto index {0}; index < pimpl->descriptor.bNumConfigurations; ++index)
+        configurations.add (Configuration (std::make_shared<USBDevice::Configuration::Pimpl>(*this, index)));
 }
 
 bool USBDevice::operator== (const USBDevice& other) const noexcept
@@ -92,86 +163,107 @@ bool USBDevice::operator!= (const USBDevice& other) const noexcept
 
 int USBDevice::getVendorId() const noexcept
 {
-    return pimpl->vendorId;
+    jassert (pimpl != nullptr);
+    return pimpl->descriptor.idVendor;
 }
 
 int USBDevice::getProductId() const noexcept
 {
-    return pimpl->productId;
+    jassert (pimpl != nullptr);
+    return pimpl->descriptor.idProduct;
 }
 
 juce::String USBDevice::getManufacturerName() const noexcept
 {
+    jassert (pimpl != nullptr);
     return pimpl->manufacturerName;
 }
 
 juce::String USBDevice::getProductName() const noexcept
 {
+    jassert (pimpl != nullptr);
     return pimpl->productName;
 }
 
 juce::String USBDevice::getSerialNumber() const noexcept
 {
+    jassert (pimpl != nullptr);
     return pimpl->serialNumber;
 }
 
 int USBDevice::getBusNumber() const noexcept
 {
-    return pimpl->busNumber;
+    jassert (pimpl != nullptr);
+    jassert (pimpl->device != nullptr);
+    return libusb_get_bus_number (pimpl->device);
 }
 
 int USBDevice::getPortNumber() const noexcept
 {
-    return pimpl->portNumber;
+    jassert (pimpl != nullptr);
+    jassert (pimpl->device != nullptr);
+    return libusb_get_port_number (pimpl->device);
 }
 
 int USBDevice::getAddress() const noexcept
 {
-    return pimpl->address;
+    jassert (pimpl != nullptr);
+    jassert (pimpl->device != nullptr);
+    return libusb_get_device_address (pimpl->device);
 }
 
 juce::String USBDevice::getUSBSpecificationVersionString() const noexcept
 {
-    return "USB " + getVersionStringFromBinaryCodedDecimal (pimpl->usbSpecification);
+    jassert (pimpl != nullptr);
+    return "USB " + getVersionStringFromBinaryCodedDecimal (pimpl->descriptor.bcdUSB);
 }
 
 int USBDevice::getUSBSpecificationVersion() const noexcept
 {
-    return pimpl->usbSpecification;
+    jassert (pimpl != nullptr);
+    return pimpl->descriptor.bcdUSB;
 }
 
 int USBDevice::getUSBSpecificationVersionMajor() const noexcept
 {
-    return getMajorVersionFromBinaryCodedDecimal (pimpl->usbSpecification);
+    jassert (pimpl != nullptr);
+    return getMajorVersionFromBinaryCodedDecimal (pimpl->descriptor.bcdUSB);
 }
 
 int USBDevice::getUSBSpecificationVersionMinor() const noexcept
 {
-    return getMinorVersionFromBinaryCodedDecimal (pimpl->usbSpecification);
+    jassert (pimpl != nullptr);
+    return getMinorVersionFromBinaryCodedDecimal (pimpl->descriptor.bcdUSB);
 }
 
 juce::String USBDevice::getVersionString() const noexcept
 {
-    return getVersionStringFromBinaryCodedDecimal (pimpl->version);
+    jassert (pimpl != nullptr);
+    return getVersionStringFromBinaryCodedDecimal (pimpl->descriptor.bcdDevice);
 }
 
 int USBDevice::getVersion() const noexcept
 {
-    return pimpl->version;
+    jassert (pimpl != nullptr);
+    return pimpl->descriptor.bcdDevice;
 }
 
 int USBDevice::getVersionMajor() const noexcept
 {
-    return getMajorVersionFromBinaryCodedDecimal (pimpl->version);
+    jassert (pimpl != nullptr);
+    return getMajorVersionFromBinaryCodedDecimal (pimpl->descriptor.bcdDevice);
 }
 
 int USBDevice::getVersionMinor() const noexcept
 {
-    return getMinorVersionFromBinaryCodedDecimal (pimpl->version);
+    jassert (pimpl != nullptr);
+    return getMinorVersionFromBinaryCodedDecimal (pimpl->descriptor.bcdDevice);
 }
 
 juce::String USBDevice::getSpeedString() const noexcept
 {
+    jassert (pimpl != nullptr);
+
     switch (pimpl->speed)
     {
         case LIBUSB_SPEED_UNKNOWN:
@@ -200,6 +292,8 @@ juce::String USBDevice::getSpeedString() const noexcept
 
 float USBDevice::getSpeedMbps() const noexcept
 {
+    jassert (pimpl != nullptr);
+
     switch (pimpl->speed)
     {
         case LIBUSB_SPEED_UNKNOWN:
@@ -224,4 +318,55 @@ float USBDevice::getSpeedMbps() const noexcept
             jassertfalse;
             return 0.f;
     }
+}
+
+USBDevice::Configuration USBDevice::getActiveConfiguration() const noexcept
+{
+    jassert (pimpl != nullptr);
+    jassert (pimpl->device != nullptr);
+
+    const LibUsbConfig activeConfig {pimpl->device};
+
+    for (const auto& config : configurations)
+    {
+        if (activeConfig == *config.pimpl)
+            return config;
+    }
+
+    return {};
+}
+
+juce::Array<USBDevice::Configuration> USBDevice::getConfigurations() const noexcept
+{
+    return configurations;
+}
+
+int USBDevice::getCurrentMilliampsRequired() const noexcept
+{
+    return getActiveConfiguration().getMilliampsRequired();
+}
+
+int USBDevice::getMaximumMilliampsRequired() const noexcept
+{
+    auto milliamps {0};
+
+    for (const auto& config : getConfigurations())
+        milliamps = juce::jmax (milliamps, config.getMilliampsRequired());
+
+    return milliamps;
+}
+
+//==============================================================================
+USBDevice::Configuration::Configuration (const std::shared_ptr<Pimpl>& pimpl) noexcept
+    : pimpl (pimpl)
+{
+
+}
+
+int USBDevice::Configuration::getMilliampsRequired() const noexcept
+{
+    if (pimpl == nullptr)
+        return 0;
+
+    return pimpl->milliampsRequired;
 }
