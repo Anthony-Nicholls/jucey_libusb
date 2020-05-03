@@ -19,4 +19,9 @@
 
  *******************************************************************************/
 
+#pragma once
+
 #include "juce_core/juce_core.h"
+
+#include "devices/jucey_USBDevice.h"
+#include "devices/jucey_USBDeviceManager.h"
