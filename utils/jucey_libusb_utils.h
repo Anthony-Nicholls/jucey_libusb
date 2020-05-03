@@ -3,14 +3,14 @@
 
 void throwOnLibUsbError (int result)
 {
-    if (result != libusb_error::LIBUSB_SUCCESS)
-    {
-        std::stringstream errorMessage;
-        errorMessage << libusb_error_name (result);
-        errorMessage << ": ";
-        errorMessage << libusb_strerror ((libusb_error)result);
-        throw std::runtime_error (errorMessage.str());
-    }
+    if (result == libusb_error::LIBUSB_SUCCESS)
+        return;
+
+    std::stringstream errorMessage;
+    errorMessage << libusb_error_name (result);
+    errorMessage << ": ";
+    errorMessage << libusb_strerror ((libusb_error)result);
+    throw std::runtime_error (errorMessage.str());
 }
 
 libusb_device_descriptor getDeviceDescriptor (libusb_device* device) noexcept
